@@ -126,6 +126,8 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
             PRE_CACHE_METHOD -> preCache(call, result)
             STOP_PRE_CACHE_METHOD -> stopPreCache(call, result)
             CLEAR_CACHE_METHOD -> clearCache(result)
+
+
             else -> {
                 if (call.argument<Any>(TEXTURE_ID_PARAMETER) == null) {
 //                    result.error(
@@ -245,9 +247,22 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
                 result.success(null)
             }
 
+            PAUSE_ALL_PLAYER -> {
+                pauseAllPlayers()
+                result.success(null)
+            }
+
+
             else -> result.notImplemented()
         }
     }
+    fun pauseAllPlayers() {
+        for (i in 0 until videoPlayers.size()) {
+            videoPlayers.valueAt(i).pause()
+        }
+
+    }
+
 
     private fun setDataSource(
         call: MethodCall,
@@ -573,5 +588,9 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
         private const val DISPOSE_METHOD = "dispose"
         private const val PRE_CACHE_METHOD = "preCache"
         private const val STOP_PRE_CACHE_METHOD = "stopPreCache"
+        private   const val PAUSE_ALL_PLAYER = "pauseAll"
+
+
+
     }
 }

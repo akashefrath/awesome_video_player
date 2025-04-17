@@ -640,7 +640,14 @@ class BetterPlayerController {
     await videoPlayerController!.pause();
     _postEvent(BetterPlayerEvent(BetterPlayerEventType.pause));
   }
+  Future<void> pauseAll() async {
+    if (videoPlayerController == null) {
+      throw StateError("The data source has not been initialized");
+    }
 
+    await videoPlayerController!.pauseAll();
+    _postEvent(BetterPlayerEvent(BetterPlayerEventType.pauseAll));
+  }
   ///Move player to specific position/moment of the video.
   Future<void> seekTo(Duration moment) async {
     if (videoPlayerController == null) {

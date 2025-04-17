@@ -243,6 +243,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         case VideoEventType.pause:
           pause();
           break;
+        case VideoEventType.pauseAll:
+          pauseAll();
         case VideoEventType.seek:
           seekTo(event.position);
           break;
@@ -450,6 +452,10 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   Future<void> pause() async {
     value = value.copyWith(isPlaying: false);
     await _applyPlayPause();
+  }
+
+  Future<void> pauseAll() async {
+    await _videoPlayerPlatform.pauseAll();
   }
 
   Future<void> _applyLooping() async {

@@ -65,6 +65,11 @@ android {
         implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
         implementation "androidx.annotation:annotation:$annotationVersion"
         implementation "androidx.work:work-runtime:$workVersion"
+
+
+
+      implementation files("/home/capecom/Documents/flutter_sdks/flutter/bin/cache/artifacts/engine/android-arm/flutter.jar")
+
     }
 }
 
