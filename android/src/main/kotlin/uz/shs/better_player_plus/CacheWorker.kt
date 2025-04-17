@@ -26,6 +26,7 @@ class CacheWorker(
     params: WorkerParameters
 ) : Worker(context, params) {
 
+
     private var cacheWriter: CacheWriter? = null
     private var lastCacheReportIndex = 0
 

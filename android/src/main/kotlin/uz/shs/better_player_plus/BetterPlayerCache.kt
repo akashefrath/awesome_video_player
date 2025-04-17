@@ -12,7 +12,7 @@ import java.io.File
 @SuppressLint("UnsafeOptInUsageError")
 object BetterPlayerCache {
 
-    @Volatile
+
     private var instance: SimpleCache? = null
 
     fun createCache(context: Context, cacheFileSize: Long): SimpleCache? {
@@ -27,7 +27,7 @@ object BetterPlayerCache {
         }
     }
 
-    @JvmStatic
+
     fun releaseCache() {
         try {
             instance?.let {
