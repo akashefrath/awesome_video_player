@@ -69,7 +69,7 @@ android {
 
 
 
-  //implementation files("/home/capecom/Documents/flutter_sdks/flutter/bin/cache/artifacts/engine/android-arm/flutter.jar")
+// implementation files("/home/capecom/Documents/flutter_sdks/flutter/bin/cache/artifacts/engine/android-arm/flutter.jar")
     }
 }
 

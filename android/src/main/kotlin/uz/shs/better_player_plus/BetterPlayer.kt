@@ -77,7 +77,7 @@ import java.lang.Exception
 import java.util.*
 import kotlin.math.max
 import kotlin.math.min
-@SuppressLint("UnsafeOptInUsageError")
+
 internal class BetterPlayer(
     context: Context,
     private val eventChannel: EventChannel,
@@ -247,7 +247,7 @@ internal class BetterPlayer(
             }
 
             @RequiresApi(Build.VERSION_CODES.M)
-            @SuppressLint("UnspecifiedImmutableFlag")
+
             override fun createCurrentContentIntent(player: Player): PendingIntent? {
                 val packageName = context.applicationContext.packageName
                 val notificationIntent = Intent()
@@ -407,6 +407,7 @@ internal class BetterPlayer(
         bitmap = null
     }
 
+    @SuppressLint("UnsafeOptInUsageError")
     private fun buildMediaSource(
         uri: Uri,
         mediaDataSourceFactory: DataSource.Factory,
@@ -447,7 +448,7 @@ internal class BetterPlayer(
                 DefaultDataSource.Factory(context, mediaDataSourceFactory)
             ).apply {
                 if (drmSessionManagerProvider != null) {
-                    setDrmSessionManagerProvider(drmSessionManagerProvider)
+                    setDrmSessionManagerProvider(drmSessionManagerProvider!!)
                 }
             }.createMediaSource(mediaItem)
 
@@ -456,14 +457,14 @@ internal class BetterPlayer(
                 DefaultDataSource.Factory(context, mediaDataSourceFactory)
             ).apply {
                 if (drmSessionManagerProvider != null) {
-                    setDrmSessionManagerProvider(drmSessionManagerProvider)
+                    setDrmSessionManagerProvider(drmSessionManagerProvider!!)
                 }
             }.createMediaSource(mediaItem)
 
             C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(mediaDataSourceFactory)
                 .apply {
                     if (drmSessionManagerProvider != null) {
-                        setDrmSessionManagerProvider(drmSessionManagerProvider)
+                        setDrmSessionManagerProvider(drmSessionManagerProvider!!)
                     }
                 }.createMediaSource(mediaItem)
 
@@ -472,7 +473,7 @@ internal class BetterPlayer(
                 DefaultExtractorsFactory()
             ).apply {
                 if (drmSessionManagerProvider != null) {
-                    setDrmSessionManagerProvider(drmSessionManagerProvider)
+                    setDrmSessionManagerProvider(drmSessionManagerProvider!!)
                 }
             }.createMediaSource(mediaItem)
 
@@ -618,7 +619,7 @@ internal class BetterPlayer(
                 if (!timeline.isEmpty) {
                     val windowStartTimeMs =
                         timeline.getWindow(0, Timeline.Window()).windowStartTimeMs
-                    val pos = exoPlayer.currentPosition
+                    val pos = exoPlayer?.currentPosition ?: 0L
                     return windowStartTimeMs + pos
                 }
             }
@@ -656,7 +657,7 @@ internal class BetterPlayer(
      * @param context                - android context
      * @return - configured MediaSession instance
      */
-    @SuppressLint("InlinedApi")
+
     fun setupMediaSession(context: Context?): MediaSessionCompat? {
         mediaSession?.release()
         context?.let {

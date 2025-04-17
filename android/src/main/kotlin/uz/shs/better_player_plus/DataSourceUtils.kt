@@ -1,11 +1,11 @@
 package uz.shs.better_player_plus
 
-import android.annotation.SuppressLint
+
 import android.net.Uri
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 
-@SuppressLint("UnsafeOptInUsageError")
+
 internal object DataSourceUtils {
     private const val USER_AGENT = "User-Agent"
     private const val USER_AGENT_PROPERTY = "http.agent"

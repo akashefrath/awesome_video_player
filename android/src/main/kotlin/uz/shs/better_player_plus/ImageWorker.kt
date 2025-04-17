@@ -79,6 +79,8 @@ class ImageWorker(
         }
     }
 
+
+
     private fun getBitmapFromInternalURL(src: String): Bitmap? {
         return try {
             val options = BitmapFactory.Options()

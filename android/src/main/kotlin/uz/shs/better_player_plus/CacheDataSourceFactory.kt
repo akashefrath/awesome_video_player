@@ -1,6 +1,6 @@
 package uz.shs.better_player_plus
 
-import android.annotation.SuppressLint
+
 import android.content.Context
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -9,7 +9,7 @@ import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 
-@SuppressLint("UnsafeOptInUsageError")
+
 internal class CacheDataSourceFactory(
     val context: Context,
     private val maxCacheSize: Long,
