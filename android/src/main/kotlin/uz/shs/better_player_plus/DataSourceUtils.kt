@@ -10,12 +10,11 @@ internal object DataSourceUtils {
     private const val USER_AGENT = "User-Agent"
     private const val USER_AGENT_PROPERTY = "http.agent"
 
-    @JvmStatic
+
     fun getUserAgent(headers: Map<String, String>?): String {
         return headers?.get(USER_AGENT) ?: System.getProperty(USER_AGENT_PROPERTY) ?: "DefaultUserAgent"
     }
 
-    @JvmStatic
     fun getDataSourceFactory(userAgent: String?, headers: Map<String, String>?): DataSource.Factory {
         // Initialize DefaultHttpDataSource.Factory with user agent and defaults
         val dataSourceFactory = DefaultHttpDataSource.Factory()
@@ -32,7 +31,7 @@ internal object DataSourceUtils {
         return dataSourceFactory
     }
 
-    @JvmStatic
+
     fun isHTTP(uri: Uri?): Boolean {
         return uri?.scheme in listOf("http", "https")
     }
