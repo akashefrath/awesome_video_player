@@ -154,7 +154,12 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
       <String, dynamic>{'textureId': textureId},
     );
   }
-
+    @override
+  Future<void> pauseAll() {
+     return _channel.invokeMethod<void>(
+      'pauseAll',
+    );
+  }
   @override
   Future<void> setVolume(int? textureId, double volume) {
     return _channel.invokeMethod<void>(

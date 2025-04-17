@@ -126,6 +126,10 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
             PRE_CACHE_METHOD -> preCache(call, result)
             STOP_PRE_CACHE_METHOD -> stopPreCache(call, result)
             CLEAR_CACHE_METHOD -> clearCache(result)
+            PAUSE_ALL_PLAYER -> {
+                pauseAllPlayers()
+                result.success(null)
+            }
 
 
             else -> {
@@ -247,11 +251,7 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
                 result.success(null)
             }
 
-            PAUSE_ALL_PLAYER -> {
-                pauseAllPlayers()
-                result.success(null)
-            }
-
+         
 
             else -> result.notImplemented()
         }
