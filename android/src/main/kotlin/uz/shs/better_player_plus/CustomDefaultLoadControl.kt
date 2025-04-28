@@ -34,11 +34,10 @@ internal class CustomDefaultLoadControl {
     val bufferForPlaybackAfterRebufferMs: Int
 
     constructor() {
-        minBufferMs = DefaultLoadControl.DEFAULT_MIN_BUFFER_MS
-        maxBufferMs = DefaultLoadControl.DEFAULT_MAX_BUFFER_MS
-        bufferForPlaybackMs = DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS
-        bufferForPlaybackAfterRebufferMs =
-            DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+        minBufferMs = 15000        // 15 seconds for smoother playback
+        maxBufferMs = 50000        // 50 seconds max to avoid over-buffering
+        bufferForPlaybackMs = 500  // Start playing after 0.5 seconds of buffer
+        bufferForPlaybackAfterRebufferMs = 2000 // Resume quicker after buffer
     }
 
     constructor(
