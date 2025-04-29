@@ -135,7 +135,7 @@ bool _remoteCommandsInitialized = false;
     }
 
     [commandCenter.togglePlayPauseCommand addTargetWithHandler: ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent * _Nonnull event) {
-        if (_notificationPlayer != [NSNull null]){
+       if (_notificationPlayer != nil){
             if (_notificationPlayer.isPlaying){
                 _notificationPlayer.eventSink(@{@"event" : @"play"});
             } else {
@@ -146,14 +146,14 @@ bool _remoteCommandsInitialized = false;
     }];
 
     [commandCenter.playCommand addTargetWithHandler: ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent * _Nonnull event) {
-        if (_notificationPlayer != [NSNull null]){
+       if (_notificationPlayer != nil){
             _notificationPlayer.eventSink(@{@"event" : @"play"});
         }
         return MPRemoteCommandHandlerStatusSuccess;
     }];
 
     [commandCenter.pauseCommand addTargetWithHandler: ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent * _Nonnull event) {
-        if (_notificationPlayer != [NSNull null]){
+       if (_notificationPlayer != nil){
             _notificationPlayer.eventSink(@{@"event" : @"pause"});
         }
         return MPRemoteCommandHandlerStatusSuccess;
@@ -163,8 +163,8 @@ bool _remoteCommandsInitialized = false;
 
     if (@available(iOS 9.1, *)) {
         [commandCenter.changePlaybackPositionCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent * _Nonnull event) {
-            if (_notificationPlayer != [NSNull null]){
-                MPChangePlaybackPositionCommandEvent * playbackEvent = (MPChangePlaybackRateCommandEvent * ) event;
+           if (_notificationPlayer != nil){
+                MPChangePlaybackPositionCommandEvent * playbackEvent = (MPChangePlaybackPositionCommandEvent * ) event;
                 CMTime time = CMTimeMake(playbackEvent.positionTime, 1);
                 int64_t millis = [BetterPlayerTimeUtils FLTCMTimeToMillis:(time)];
                 [_notificationPlayer seekTo: millis];
@@ -229,11 +229,21 @@ bool _remoteCommandsInitialized = false;
 
 
 
-- (NSString*) getTextureId: (BetterPlayer*) player{
-    NSArray* temp = [_players allKeysForObject: player];
-    NSString* key = [temp lastObject];
-    return key;
+- (NSString*)getTextureId:(BetterPlayer*)player {
+    for (id key in _players) {
+        if ([key isKindOfClass:[NSNumber class]]) {
+            NSNumber* textureId = (NSNumber*)key;
+            BetterPlayer* currentPlayer = [_players objectForKey:textureId];
+            if (currentPlayer == player) {
+                return [textureId stringValue];
+            }
+        }
+    }
+    return nil;
 }
+
+
+
 
 - (void) setupUpdateListener:(BetterPlayer*)player,NSString* title, NSString* author,NSString* imageUrl  {
     id _timeObserverId = [player.player addPeriodicTimeObserverForInterval:CMTimeMake(1, 1) queue:NULL usingBlock:^(CMTime time){
@@ -241,6 +251,9 @@ bool _remoteCommandsInitialized = false;
     }];
 
     NSString* key =  [self getTextureId:player];
+    if (key != nil) {
+    return;
+}
     [ _timeObserverIdDict setObject:_timeObserverId forKey: key];
 }
 
@@ -251,6 +264,9 @@ bool _remoteCommandsInitialized = false;
         _remoteCommandsInitialized = false;
     }
     NSString* key =  [self getTextureId:player];
+     if (key != nil) {
+    return;
+}
     id _timeObserverId = _timeObserverIdDict[key];
     [_timeObserverIdDict removeObjectForKey: key];
     [_artworkImageDict removeObjectForKey:key];
@@ -263,6 +279,9 @@ bool _remoteCommandsInitialized = false;
 
 - (void) stopOtherUpdateListener: (BetterPlayer*) player{
     NSString* currentPlayerTextureId = [self getTextureId:player];
+     if (currentPlayerTextureId != nil) {
+    return;
+}
     for (NSString* textureId in _timeObserverIdDict.allKeys) {
         if (currentPlayerTextureId == textureId){
             continue;
@@ -293,7 +312,18 @@ bool _remoteCommandsInitialized = false;
         [self onPlayerSetup:player result:result];
     } else {
         NSDictionary* argsMap = call.arguments;
-        int64_t textureId = ((NSNumber*)argsMap[@"textureId"]).unsignedIntegerValue;
+     
+        id textureIdObject = argsMap[@"textureId"];
+        int64_t textureId = 0;
+
+        if ([textureIdObject isKindOfClass:[NSNumber class]]) {
+            textureId = [(NSNumber*)textureIdObject unsignedLongLongValue];
+        } else {
+            // Generate a unique int64_t: use current time in nanoseconds
+            uint64_t timeInNano = (uint64_t)([[NSDate date] timeIntervalSince1970] * 1000000.0);
+            uint32_t randomBits = arc4random_uniform(1000); // small random to avoid clashes
+            textureId = (int64_t)(timeInNano + randomBits);
+        }
         BetterPlayer* player = _players[@(textureId)];
         if ([@"setDataSource" isEqualToString:call.method]) {
             [player clear];
@@ -478,3 +508,19 @@ bool _remoteCommandsInitialized = false;
     }
 }
 @end
+
+
+
+/// NSDictionary* argsMap = call.arguments;
+        
+        // id textureIdObject = argsMap[@"textureId"];
+        // int64_t textureId = 0;
+
+        // if ([textureIdObject isKindOfClass:[NSNumber class]]) {
+        //     textureId = [(NSNumber*)textureIdObject unsignedLongLongValue];
+        // } else {
+        //     // Generate a unique int64_t: use current time in nanoseconds
+        //     uint64_t timeInNano = (uint64_t)([[NSDate date] timeIntervalSince1970] * 1000000.0);
+        //     uint32_t randomBits = arc4random_uniform(1000); // small random to avoid clashes
+        //     textureId = (int64_t)(timeInNano + randomBits);
+        // }
