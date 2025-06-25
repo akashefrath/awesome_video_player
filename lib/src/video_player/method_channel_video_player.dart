@@ -42,10 +42,9 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
                 bufferingConfiguration.bufferForPlaybackAfterRebufferMs,
           });
 
-      response =
-          responseLinkedHashMap != null
-              ? Map<String, dynamic>.from(responseLinkedHashMap)
-              : null;
+      response = responseLinkedHashMap != null
+          ? Map<String, dynamic>.from(responseLinkedHashMap)
+          : null;
     }
     return response?['textureId'] as int?;
   }
@@ -144,12 +143,12 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
       'textureId': textureId,
     });
   }
-    @override
+
+  @override
   Future<void> pauseAll() {
-     return _channel.invokeMethod<void>(
-      'pauseAll',
-    );
+    return _channel.invokeMethod<void>('pauseAll');
   }
+
   @override
   Future<void> setVolume(int? textureId, double volume) {
     return _channel.invokeMethod<void>('setVolume', <String, dynamic>{
@@ -359,16 +358,11 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
           return VideoEvent(eventType: VideoEventType.play, key: key);
 
         case 'pause':
-          return VideoEvent(
-            eventType: VideoEventType.pause,
-            key: key,
-          );
+          return VideoEvent(eventType: VideoEventType.pause, key: key);
         case 'pauseAll':
-          return VideoEvent(
-            eventType: VideoEventType.pauseAll,
-            key: key,
-          );
-         
+          return VideoEvent(eventType: VideoEventType.pauseAll, key: key);
+
+          return VideoEvent(eventType: VideoEventType.pause, key: key);
 
         case 'seek':
           return VideoEvent(

@@ -3,6 +3,17 @@ name: Update Changelog on Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (e.g., v1.0.5)"
+        required: true
+      release_name:
+        description: "Release name (e.g., Version 1.0.5)"
+        required: true
+      release_body:
+        description: "Release notes/changelog content"
+        required: true
 
 jobs:
   update-changelog:
@@ -17,16 +28,22 @@ jobs:
 
       - name: Update CHANGELOG.md
         run: |
-          # Get release info
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
-          RELEASE_NAME="${{ github.event.release.name }}"
-          RELEASE_BODY="${{ github.event.release.body }}"
+          # Get release info based on trigger type
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            RELEASE_TAG="${{ github.event.release.tag_name }}"
+            RELEASE_NAME="${{ github.event.release.name }}"
+            RELEASE_BODY="${{ github.event.release.body }}"
+          else
+            RELEASE_TAG="${{ github.event.inputs.release_tag }}"
+            RELEASE_NAME="${{ github.event.inputs.release_name }}"
+            RELEASE_BODY="${{ github.event.inputs.release_body }}"
+          fi
 
           # Format release date
           RELEASE_DATE=$(date +"%Y-%m-%d")
 
           # Create the new changelog entry
-          NEW_ENTRY="## ${RELEASE_NAME} (${RELEASE_DATE})\n\n${RELEASE_BODY}\n\n"
+          NEW_ENTRY="## [${RELEASE_TAG}] - ${RELEASE_DATE}\n\n###${RELEASE_NAME}\n${RELEASE_BODY}\n\n"
 
           # Prepend the new entry to the CHANGELOG.md file
           echo -e "${NEW_ENTRY}$(cat CHANGELOG.md)" > CHANGELOG.md
@@ -38,4 +55,4 @@ jobs:
           # Commit and push the changes
           git add CHANGELOG.md
           git commit -m "docs: update CHANGELOG.md for release ${RELEASE_TAG}"
-          git push
+          git push origin HEAD:${GITHUB_REF#refs/heads/}

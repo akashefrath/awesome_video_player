@@ -1,3 +1,5 @@
+### 1.0.5
+* fix: improve DateTime validation and expose progress bar by @Mazen-Almortada in #22 
 
 ### 1.0.4
 * fix(ios): fixed allowedScreenSleep parameter not being respected in ios AVPlayer which caused the screen to never sleep during video playback by @nateshmbhat in #17
