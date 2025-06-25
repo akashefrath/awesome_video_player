@@ -72,6 +72,7 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
         releaseCache()
         flutterState?.stopListening()
         flutterState = null
+        ExoPlayerPoolManager.releaseAll()
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {

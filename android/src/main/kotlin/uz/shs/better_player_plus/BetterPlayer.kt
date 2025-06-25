@@ -42,7 +42,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
-import androidx.media3.common.PriorityTaskManager
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.Util
@@ -77,7 +76,7 @@ import java.lang.Exception
 import java.util.*
 import kotlin.math.max
 import kotlin.math.min
-
+@SuppressLint("UnsafeOptInUsageError")
 internal class BetterPlayer(
     context: Context,
     private val eventChannel: EventChannel,
@@ -87,6 +86,7 @@ internal class BetterPlayer(
 ) {
     private val exoPlayer: ExoPlayer?
     private val eventSink = QueuingEventSink()
+
 
     private val trackSelector: DefaultTrackSelector = DefaultTrackSelector(context)
     private val loadControl: LoadControl
@@ -120,15 +120,16 @@ internal class BetterPlayer(
             .setEnableDecoderFallback(true)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
-        exoPlayer = ExoPlayer.Builder(context)
-            .setTrackSelector(trackSelector)
-            .setRenderersFactory(renderersFactory)
-            .setLoadControl(loadControl)
-            .setPriorityTaskManager(PriorityTaskManager().apply {
-                add(0) // priority for buffering
-            })
-            .build()
+//        exoPlayer = ExoPlayer.Builder(context)
+//            .setTrackSelector(trackSelector)
+//            .setRenderersFactory(renderersFactory)
+//            .setLoadControl(loadControl)
+//            .setPriorityTaskManager(PriorityTaskManager().apply {
+//                add(0) // priority for buffering
+//            })
+//            .build()
 
+        exoPlayer = ExoPlayerPoolManager.getOrCreate(context,trackSelector,renderersFactory,loadControl)
 
         workManager = WorkManager.getInstance(context)
         workerObserverMap = HashMap()
@@ -793,8 +794,8 @@ internal class BetterPlayer(
         textureEntry.release()
         surface?.release()
         surface = null
-        exoPlayer?.release()
-
+     //   exoPlayer?.release()
+        exoPlayer?.let { ExoPlayerPoolManager.release(it) }
     }
 
     override fun equals(other: Any?): Boolean {
