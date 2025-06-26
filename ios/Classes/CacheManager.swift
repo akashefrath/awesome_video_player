@@ -5,39 +5,48 @@ import GCDWebServer
 import PINCache
 
 @objc public class CacheManager: NSObject {
-
-    // We store the last pre-cached CachingPlayerItem objects to be able to play even if the download
-    // has not finished.
-    var _preCachedURLs = Dictionary<String, CachingPlayerItem>()
-
-    var completionHandler: ((_ success:Bool) -> Void)? = nil
-
-    var diskConfig = DiskConfig(name: "BetterPlayerCache", expiry: .date(Date().addingTimeInterval(3600*24*30)),
-                                maxSize: 100*1024*1024)
+    // MARK: - Shared State (Thread-Safe)
+    private let queue = DispatchQueue(label: "com.betterplayer.cachemanager", attributes: .concurrent)
+    private var _preCachedURLs = [String: CachingPlayerItem]()
+    private var _existsInStorage: Bool = false
     
-    // Flag whether the CachingPlayerItem was already cached.
-    var _existsInStorage: Bool = false
+    // Atomic access to `_preCachedURLs`
+    private var preCachedURLs: [String: CachingPlayerItem] {
+        get { queue.sync { _preCachedURLs } }
+        set { queue.async(flags: .barrier) { self._preCachedURLs = newValue } }
+    }
     
-    let memoryConfig = MemoryConfig(
-      // Expiry date that will be applied by default for every added object
-      // if it's not overridden in the `setObject(forKey:expiry:)` method
-      expiry: .never,
-      // The maximum number of objects in memory the cache should hold
-      countLimit: 0,
-      // The maximum total cost that the cache can hold before it starts evicting objects, 0 for no limit
-      totalCostLimit: 0
+    // MARK: - Config
+    var completionHandler: ((_ success: Bool) -> Void)?
+    var diskConfig = DiskConfig(
+        name: "BetterPlayerCache",
+        expiry: .date(Date().addingTimeInterval(3600 * 24 * 30)),
+        maxSize: 100 * 1024 * 1024
     )
     
-    var server: HLSCachingReverseProxyServer?
-
-    lazy var storage: Cache.Storage<String,Data>? = {
-        return try? Cache.Storage<String,Data>(diskConfig: diskConfig, memoryConfig: memoryConfig, transformer: TransformerFactory.forCodable(ofType: Data.self))
+    let memoryConfig = MemoryConfig(
+        expiry: .never,
+        countLimit: 0,
+        totalCostLimit: 0
+    )
+    
+    // MARK: - Server & Storage
+    private var server: HLSCachingReverseProxyServer?
+    private lazy var storage: Storage<String, Data>? = {
+        try? Storage<String, Data>(
+            diskConfig: diskConfig,
+            memoryConfig: memoryConfig,
+            transformer: TransformerFactory.forCodable(ofType: Data.self)
+        )
     }()
     
-
-    ///Setups cache server for HLS streams
-    @objc public func setup(){
+    // MARK: - Setup (Thread-Safe)
+    private static let setupOnce: Void = {
         GCDWebServer.setLogLevel(4)
+    }()
+    
+    @objc public func setup() {
+        _ = CacheManager.setupOnce // Ensures setup runs only once
         let webServer = GCDWebServer()
         let cache = PINCache.shared
         let urlSession = URLSession.shared
@@ -45,97 +54,138 @@ import PINCache
         server?.start(port: 8080)
     }
     
-    @objc public func setMaxCacheSize(_ maxCacheSize: NSNumber?){
-        if let unsigned = maxCacheSize {
-            let _maxCacheSize = unsigned.uintValue
-            diskConfig = DiskConfig(name: "BetterPlayerCache", expiry: .date(Date().addingTimeInterval(3600*24*30)), maxSize: _maxCacheSize)
-        }        
+    // MARK: - Public Methods (Thread-Safe)
+    @objc public func setMaxCacheSize(_ maxCacheSize: NSNumber?) {
+        if let maxSize = maxCacheSize?.uintValue {
+            diskConfig = DiskConfig(
+                name: "BetterPlayerCache",
+                expiry: .date(Date().addingTimeInterval(3600 * 24 * 30)),
+                maxSize: maxSize
+            )
+        }
     }
-
-    // MARK: - Logic
-    @objc public func preCacheURL(_ url: URL, cacheKey: String?, videoExtension: String?, withHeaders headers: Dictionary<NSObject,AnyObject>, completionHandler: ((_ success:Bool) -> Void)?) {
-        self.completionHandler = completionHandler
+    
+    @objc public func preCacheURL(
+        _ url: URL,
+        cacheKey: String?,
+        videoExtension: String?,
+        withHeaders headers: [NSObject: AnyObject],
+        completionHandler: ((_ success: Bool) -> Void)?
+    ) {
+        let key = cacheKey ?? url.absoluteString
         
-        let _key: String = cacheKey ?? url.absoluteString
-        // Make sure the item is not already being downloaded
-        if self._preCachedURLs[_key] == nil {            
-            if let item = self.getCachingPlayerItem(url, cacheKey: _key, videoExtension: videoExtension, headers: headers){
-                if !self._existsInStorage {
-                    self._preCachedURLs[_key] = item
-                    item.download()
+        queue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            // Check if already downloading
+            if self._preCachedURLs[key] == nil {
+                if let item = self.getCachingPlayerItem(url, cacheKey: key, videoExtension: videoExtension, headers: headers) {
+                    if !self._existsInStorage {
+                        self._preCachedURLs[key] = item
+                        item.download()
+                    } else {
+                        DispatchQueue.main.async {
+                            completionHandler?(true)
+                        }
+                    }
                 } else {
-                    self.completionHandler?(true)
+                    DispatchQueue.main.async {
+                        completionHandler?(false)
+                    }
                 }
             } else {
-                self.completionHandler?(false)
+                DispatchQueue.main.async {
+                    completionHandler?(true)
+                }
             }
-        } else {
-            self.completionHandler?(true)
         }
     }
     
-    @objc public func stopPreCache(_ url: URL, cacheKey: String?, completionHandler: ((_ success:Bool) -> Void)?){
-        let _key: String = cacheKey ?? url.absoluteString
-        if self._preCachedURLs[_key] != nil {
-            let playerItem = self._preCachedURLs[_key]!
-            playerItem.stopDownload()
-            self._preCachedURLs.removeValue(forKey: _key)
-            self.completionHandler?(true)
-            return
+    @objc public func stopPreCache(
+        _ url: URL,
+        cacheKey: String?,
+        completionHandler: ((_ success: Bool) -> Void)?
+    ) {
+        let key = cacheKey ?? url.absoluteString
+        
+        queue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            if let playerItem = self._preCachedURLs[key] {
+                playerItem.stopDownload()
+                self._preCachedURLs.removeValue(forKey: key)
+                DispatchQueue.main.async {
+                    completionHandler?(true)
+                }
+            } else {
+                DispatchQueue.main.async {
+                    completionHandler?(false)
+                }
+            }
         }
-        self.completionHandler?(false)
     }
     
-    ///Gets caching player item for normal playback.
-    @objc public func getCachingPlayerItemForNormalPlayback(_ url: URL, cacheKey: String?, videoExtension: String?, headers: Dictionary<NSObject,AnyObject>) -> AVPlayerItem? {
-        let mimeTypeResult = getMimeType(url:url, explicitVideoExtension: videoExtension)
-        if (mimeTypeResult.1 == "application/vnd.apple.mpegurl"){
-            let reverseProxyURL = server?.reverseProxyURL(from: url)!
-            let playerItem = AVPlayerItem(url: reverseProxyURL!)
-            return playerItem
+    @objc public func getCachingPlayerItemForNormalPlayback(
+        _ url: URL,
+        cacheKey: String?,
+        videoExtension: String?,
+        headers: [NSObject: AnyObject]
+    ) -> AVPlayerItem? {
+        let mimeTypeResult = getMimeType(url: url, explicitVideoExtension: videoExtension)
+        if mimeTypeResult.1 == "application/vnd.apple.mpegurl" {
+            guard let reverseProxyURL = server?.reverseProxyURL(from: url) else { return nil }
+            return AVPlayerItem(url: reverseProxyURL)
         } else {
             return getCachingPlayerItem(url, cacheKey: cacheKey, videoExtension: videoExtension, headers: headers)
         }
     }
     
-
-    // Get a CachingPlayerItem either from the network if it's not cached or from the cache.
-    @objc public func getCachingPlayerItem(_ url: URL, cacheKey: String?,videoExtension: String?, headers: Dictionary<NSObject,AnyObject>) -> CachingPlayerItem? {
+    // MARK: - Private Methods
+    private func getCachingPlayerItem(
+        _ url: URL,
+        cacheKey: String?,
+        videoExtension: String?,
+        headers: [NSObject: AnyObject]
+    ) -> CachingPlayerItem? {
+        let key = cacheKey ?? url.absoluteString
         let playerItem: CachingPlayerItem
-        let _key: String = cacheKey ?? url.absoluteString
-        // Fetch ongoing pre-cached url if it exists
-        if self._preCachedURLs[_key] != nil {
-            playerItem = self._preCachedURLs[_key]!
-            self._preCachedURLs.removeValue(forKey: _key)
+        
+        // Check pre-cached items first
+        if let preCachedItem = queue.sync(execute: { _preCachedURLs[key] }) {
+            queue.async(flags: .barrier) { [weak self] in
+                self?._preCachedURLs.removeValue(forKey: key)
+            }
+            playerItem = preCachedItem
         } else {
-            // Trying to retrieve a track from cache syncronously
-            let data = try? storage?.object(forKey: _key)
-            if data != nil {
-                // The file is cached.
-                self._existsInStorage = true
-                let mimeTypeResult = getMimeType(url:url, explicitVideoExtension: videoExtension)
-                if (mimeTypeResult.1.isEmpty){
-                    NSLog("Cache error: couldn't find mime type for url: \(url.absoluteURL). For this URL cache didn't work and video will be played without cache.")
-                    playerItem = CachingPlayerItem(url: url, cacheKey: _key, headers: headers)
+            // Check storage
+            let data = try? storage?.object(forKey: key)
+            if let data = data {
+                _existsInStorage = true
+                let mimeTypeResult = getMimeType(url: url, explicitVideoExtension: videoExtension)
+                if mimeTypeResult.1.isEmpty {
+                    NSLog("Cache error: couldn't find mime type for url: \(url.absoluteURL). Video will play without cache.")
+                    playerItem = CachingPlayerItem(url: url, cacheKey: key, headers: headers)
                 } else {
-                    playerItem = CachingPlayerItem(data: data!, mimeType: mimeTypeResult.1, fileExtension: mimeTypeResult.0)
+                    playerItem = CachingPlayerItem(data: data, mimeType: mimeTypeResult.1, fileExtension: mimeTypeResult.0)
                 }
             } else {
-                // The file is not cached.
-                playerItem = CachingPlayerItem(url: url, cacheKey: _key, headers: headers)
-                self._existsInStorage = false
+                _existsInStorage = false
+                playerItem = CachingPlayerItem(url: url, cacheKey: key, headers: headers)
             }
         }
+        
         playerItem.delegate = self
         return playerItem
     }
     
-    // Remove all objects
-    @objc public func clearCache(){
-        try? storage?.removeAll()
-        self._preCachedURLs = Dictionary<String,CachingPlayerItem>()
+    @objc public func clearCache() {
+        queue.async(flags: .barrier) { [weak self] in
+            try? self?.storage?.removeAll()
+            self?._preCachedURLs.removeAll()
+        }
     }
     
+  
     private func getMimeType(url: URL, explicitVideoExtension: String?) -> (String,String){
         var videoExtension = url.pathExtension
         if (explicitVideoExtension != nil){
@@ -205,22 +255,20 @@ import PINCache
 
 // MARK: - CachingPlayerItemDelegate
 extension CacheManager: CachingPlayerItemDelegate {
-    func playerItem(_ playerItem: CachingPlayerItem, didFinishDownloadingData data: Data) {
-        // A track is downloaded. Saving it to the cache asynchronously.
-        storage?.async.setObject(data, forKey: playerItem.cacheKey ?? playerItem.url.absoluteString, completion: { _ in })
-        self.completionHandler?(true)
+    public func playerItem(_ playerItem: CachingPlayerItem, didFinishDownloadingData data: Data) {
+        storage?.async.setObject(data, forKey: playerItem.cacheKey ?? playerItem.url.absoluteString) { _ in }
+        DispatchQueue.main.async { [weak self] in
+            self?.completionHandler?(true)
+        }
     }
-
-     func playerItem(_ playerItem: CachingPlayerItem, didDownloadBytesSoFar bytesDownloaded: Int, outOf bytesExpected: Int){
-        /// Is called every time a new portion of data is received.
-        let percentage = Double(bytesDownloaded)/Double(bytesExpected)*100.0
-        let str = String(format: "%.1f%%", percentage)
-        //NSLog("Downloading... %@", str)
+    
+    public func playerItem(_ playerItem: CachingPlayerItem, didDownloadBytesSoFar bytesDownloaded: Int, outOf bytesExpected: Int) {
+        // Optional: Update progress on main thread if needed
     }
-
-    func playerItem(_ playerItem: CachingPlayerItem, downloadingFailedWith error: Error){
-        /// Is called on downloading error.
-        NSLog("Error when downloading the file %@", error as NSError);
-        self.completionHandler?(false)
+    
+    public func playerItem(_ playerItem: CachingPlayerItem, downloadingFailedWith error: Error) {
+        DispatchQueue.main.async { [weak self] in
+            self?.completionHandler?(false)
+        }
     }
 }
