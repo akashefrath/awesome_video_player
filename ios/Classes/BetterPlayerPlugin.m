@@ -296,6 +296,13 @@ bool _remoteCommandsInitialized = false;
 }
 
 
+// In AppDelegate.m or wherever appropriate
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    // Pre-create 3 players in background
+    [[AVPlayerPool sharedPool] preparePoolWithSize:3];
+    return YES;
+}
+
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
 
 

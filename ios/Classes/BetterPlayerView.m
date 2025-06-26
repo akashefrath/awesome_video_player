@@ -5,21 +5,37 @@
 #import "BetterPlayerView.h"
 
 // BetterPlayerView.m
-@implementation BetterPlayerView
-- (AVPlayer *)player {
-    return self.playerLayer.player;
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super init];
+    NSAssert(self, @"super init cannot be nil");
+    _isInitialized = false;
+    _isPlaying = false;
+    _disposed = false;
+    
+    // Get player from pool instead of creating new
+    _player = [[AVPlayerPool sharedPool] dequeuePlayer];
+    _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+    
+    if (@available(iOS 10.0, *)) {
+        _player.automaticallyWaitsToMinimizeStalling = false;
+    }
+    
+    self._observersAdded = false;
+    return self;
 }
 
-- (void)setPlayer:(AVPlayer *)player {
-    self.playerLayer.player = player;
+- (void)disposeSansEventChannel {
+    @try{
+        [self clear];
+        
+        // Return player to pool when disposing
+        if (_player) {
+            [[AVPlayerPool sharedPool] enqueuePlayer:_player];
+            _player = nil;
+        }
+    }
+    @catch(NSException *exception) {
+        NSLog(exception.debugDescription);
+    }
 }
-
-// Override UIView method
-+ (Class)layerClass {
-    return [AVPlayerLayer class];
-}
-
-- (AVPlayerLayer *)playerLayer {
-    return (AVPlayerLayer *)self.layer;
-}
-@end

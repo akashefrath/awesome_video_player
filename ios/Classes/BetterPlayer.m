@@ -139,36 +139,59 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
     return [self setDataSourceURL:[NSURL fileURLWithPath:path] withKey:key withCertificateUrl:certificateUrl withLicenseUrl:(NSString*)licenseUrl withHeaders: @{} withCache: false cacheKey:cacheKey cacheManager:cacheManager overriddenDuration:overriddenDuration videoExtension: nil allowedScreenSleep:allowedScreenSleep];
 }
 
-- (void)setDataSourceURL:(NSURL*)url withKey:(NSString*)key withCertificateUrl:(NSString*)certificateUrl withLicenseUrl:(NSString*)licenseUrl withHeaders:(NSDictionary*)headers withCache:(BOOL)useCache cacheKey:(NSString*)cacheKey cacheManager:(CacheManager*)cacheManager overriddenDuration:(int) overriddenDuration videoExtension: (NSString*) videoExtension allowedScreenSleep:(BOOL)allowedScreenSleep{
+- (void)setDataSourceURL:(NSURL*)url withKey:(NSString*)key withCertificateUrl:(NSString*)certificateUrl withLicenseUrl:(NSString*)licenseUrl withHeaders:(NSDictionary*)headers withCache:(BOOL)useCache cacheKey:(NSString*)cacheKey cacheManager:(CacheManager*)cacheManager overriddenDuration:(int)overriddenDuration videoExtension:(NSString*)videoExtension allowedScreenSleep:(BOOL)allowedScreenSleep {
+    
+    // 1. Get player from pool instead of using existing _player
+    if (!_player) {
+        _player = [[AVPlayerPool sharedPool] dequeuePlayer];
+    }
+    
     _overriddenDuration = 0;
     
-    // Set the preventsDisplaySleepDuringVideoPlayback property based on allowedScreenSleep parameter
+    // 2. Configure player properties
+    _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+    if (@available(iOS 10.0, *)) {
+        _player.automaticallyWaitsToMinimizeStalling = NO;
+    }
+    
+    // 3. Sleep prevention configuration
     if (@available(iOS 12.0, *)) {
         NSLog(@"Setting preventsDisplaySleepDuringVideoPlayback to %d", !allowedScreenSleep);
         _player.preventsDisplaySleepDuringVideoPlayback = !allowedScreenSleep;
     }
     
-    if (headers == [NSNull null] || headers == NULL){
+    // 4. Handle headers
+    if (headers == [NSNull null] || headers == NULL) {
         headers = @{};
     }
     
+    // 5. Create player item with caching or direct URL
     AVPlayerItem* item;
-    if (useCache){
-        if (cacheKey == [NSNull null]){
+    if (useCache) {
+        if (cacheKey == [NSNull null]) {
             cacheKey = nil;
         }
-        if (videoExtension == [NSNull null]){
+        if (videoExtension == [NSNull null]) {
             videoExtension = nil;
         }
         
-        item = [cacheManager getCachingPlayerItemForNormalPlayback:url cacheKey:cacheKey videoExtension: videoExtension headers:headers];
+        item = [cacheManager getCachingPlayerItemForNormalPlayback:url 
+                                                        cacheKey:cacheKey 
+                                                  videoExtension:videoExtension 
+                                                         headers:headers];
     } else {
-        AVURLAsset* asset = [AVURLAsset URLAssetWithURL:url
-                                                options:@{@"AVURLAssetHTTPHeaderFieldsKey" : headers}];
-        if (certificateUrl && certificateUrl != [NSNull null] && [certificateUrl length] > 0) {
-            NSURL * certificateNSURL = [[NSURL alloc] initWithString: certificateUrl];
-            NSURL * licenseNSURL = [[NSURL alloc] initWithString: licenseUrl];
+        NSMutableDictionary *options = [NSMutableDictionary dictionary];
+        if (headers.count > 0) {
+            options[@"AVURLAssetHTTPHeaderFieldsKey"] = headers;
+        }
+        
+        AVURLAsset* asset = [AVURLAsset URLAssetWithURL:url options:options];
+        
+        if (certificateUrl && certificateUrl != [NSNull null] && certificateUrl.length > 0) {
+            NSURL *certificateNSURL = [[NSURL alloc] initWithString:certificateUrl];
+            NSURL *licenseNSURL = [[NSURL alloc] initWithString:licenseUrl];
             _loaderDelegate = [[BetterPlayerEzDrmAssetsLoaderDelegate alloc] init:certificateNSURL withLicenseURL:licenseNSURL];
+            
             dispatch_queue_attr_t qos = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_DEFAULT, -1);
             dispatch_queue_t streamQueue = dispatch_queue_create("streamQueue", qos);
             [asset.resourceLoader setDelegate:_loaderDelegate queue:streamQueue];
@@ -176,10 +199,18 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
         item = [AVPlayerItem playerItemWithAsset:asset];
     }
 
+    // 6. Handle overridden duration
     if (@available(iOS 10.0, *) && overriddenDuration > 0) {
         _overriddenDuration = overriddenDuration;
     }
-    return [self setDataSourcePlayerItem:item withKey:key];
+    
+    // 7. Set data source and clean up previous item if needed
+    if (_player.currentItem) {
+        [self removeObservers];
+        [_player replaceCurrentItemWithPlayerItem:nil];
+    }
+    
+    [self setDataSourcePlayerItem:item withKey:key];
 }
 
 - (void)setDataSourcePlayerItem:(AVPlayerItem*)item withKey:(NSString*)key{
@@ -677,6 +708,11 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
     [_eventChannel setStreamHandler:nil];
     [self disablePictureInPicture];
     [self setPictureInPicture:false];
+     // Return player to pool
+    if (_player) {
+        [[AVPlayerPool sharedPool] enqueuePlayer:_player];
+        _player = nil;
+    }
     _disposed = true;
 }
 
