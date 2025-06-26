@@ -233,7 +233,6 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
     }
 
 }
-
 - (void)observeValueForKeyPath:(NSString*)path
                       ofObject:(id)object
                         change:(NSDictionary*)change
@@ -241,92 +240,117 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
 
     if ([path isEqualToString:@"rate"]) {
         if (@available(iOS 10.0, *)) {
-            if (_pipController.pictureInPictureActive == true){
-                if (_lastAvPlayerTimeControlStatus != [NSNull null] && _lastAvPlayerTimeControlStatus == _player.timeControlStatus){
+            if (_pipController.pictureInPictureActive == YES) {
+                AVPlayerTimeControlStatus currentStatus = _player.timeControlStatus;
+
+                if (_lastAvPlayerTimeControlStatus != [NSNull null] &&
+                    _lastAvPlayerTimeControlStatus == currentStatus) {
                     return;
                 }
 
-                if (_player.timeControlStatus == AVPlayerTimeControlStatusPaused){
-                    _lastAvPlayerTimeControlStatus = _player.timeControlStatus;
-                    if (_eventSink != nil) {
-                      _eventSink(@{@"event" : @"pause"});
-                    }
-                    return;
+                _lastAvPlayerTimeControlStatus = currentStatus;
 
-                }
-                if (_player.timeControlStatus == AVPlayerTimeControlStatusPlaying){
-                    _lastAvPlayerTimeControlStatus = _player.timeControlStatus;
-                    if (_eventSink != nil) {
-                      _eventSink(@{@"event" : @"play"});
+                if (_eventSink != nil) {
+                    if (currentStatus == AVPlayerTimeControlStatusPaused) {
+                        _eventSink(@{@"event" : @"pause"});
+                        return;
+                    } else if (currentStatus == AVPlayerTimeControlStatusPlaying) {
+                        _eventSink(@{@"event" : @"play"});
                     }
                 }
             }
         }
 
-        if (_player.rate == 0 && //if player rate dropped to 0
-            CMTIME_COMPARE_INLINE(_player.currentItem.currentTime, >, kCMTimeZero) && //if video was started
-            CMTIME_COMPARE_INLINE(_player.currentItem.currentTime, <, _player.currentItem.duration) && //but not yet finished
-            _isPlaying) { //instance variable to handle overall state (changed to YES when user triggers playback)
-            [self handleStalled];
-        }
+        // 🔐 AV-safe stall detection
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            if (!self->_player || !self->_player.currentItem) return;
+
+            float rate = self->_player.rate;
+            CMTime currentTime = self->_player.currentItem.currentTime;
+            CMTime duration = self->_player.currentItem.duration;
+
+            BOOL shouldStall = rate == 0 &&
+                CMTIME_COMPARE_INLINE(currentTime, >, kCMTimeZero) &&
+                CMTIME_COMPARE_INLINE(currentTime, <, duration) &&
+                self->_isPlaying;
+
+            if (shouldStall) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self handleStalled];
+                });
+            }
+        });
     }
 
-    if (context == timeRangeContext) {
-        if (_eventSink != nil) {
-            NSMutableArray<NSArray<NSNumber*>*>* values = [[NSMutableArray alloc] init];
-            for (NSValue* rangeValue in [object loadedTimeRanges]) {
+    else if (context == timeRangeContext) {
+        if (_eventSink != nil && [object isKindOfClass:[AVPlayerItem class]]) {
+            AVPlayerItem *item = (AVPlayerItem *)object;
+            NSArray *ranges = item.loadedTimeRanges;
+            NSMutableArray<NSArray<NSNumber *> *> *values = [[NSMutableArray alloc] init];
+
+            for (NSValue *rangeValue in ranges) {
                 CMTimeRange range = [rangeValue CMTimeRangeValue];
-                int64_t start = [BetterPlayerTimeUtils FLTCMTimeToMillis:(range.start)];
-                int64_t end = start + [BetterPlayerTimeUtils FLTCMTimeToMillis:(range.duration)];
-                if (!CMTIME_IS_INVALID(_player.currentItem.forwardPlaybackEndTime)) {
-                    int64_t endTime = [BetterPlayerTimeUtils FLTCMTimeToMillis:(_player.currentItem.forwardPlaybackEndTime)];
-                    if (end > endTime){
+                int64_t start = [BetterPlayerTimeUtils FLTCMTimeToMillis:range.start];
+                int64_t end = start + [BetterPlayerTimeUtils FLTCMTimeToMillis:range.duration];
+
+                if (!CMTIME_IS_INVALID(item.forwardPlaybackEndTime)) {
+                    int64_t endTime = [BetterPlayerTimeUtils FLTCMTimeToMillis:item.forwardPlaybackEndTime];
+                    if (end > endTime) {
                         end = endTime;
                     }
                 }
 
-                [values addObject:@[ @(start), @(end) ]];
+                [values addObject:@[@(start), @(end)]];
             }
+
             _eventSink(@{@"event" : @"bufferingUpdate", @"values" : values, @"key" : _key});
         }
     }
-    else if (context == presentationSizeContext){
+
+    else if (context == presentationSizeContext) {
         [self onReadyToPlay];
     }
 
     else if (context == statusContext) {
-        AVPlayerItem* item = (AVPlayerItem*)object;
+        AVPlayerItem *item = (AVPlayerItem *)object;
         switch (item.status) {
             case AVPlayerItemStatusFailed:
-                NSLog(@"Failed to load video:");
-                NSLog(item.error.debugDescription);
-
+                NSLog(@"[BetterPlayer] Failed to load video: %@", item.error);
                 if (_eventSink != nil) {
                     _eventSink([FlutterError
-                                errorWithCode:@"VideoError"
-                                message:[@"Failed to load video: "
-                                         stringByAppendingString:[item.error localizedDescription]]
-                                details:nil]);
+                        errorWithCode:@"VideoError"
+                               message:[@"Failed to load video: " stringByAppendingString:item.error.localizedDescription]
+                               details:nil]);
                 }
                 break;
+
             case AVPlayerItemStatusUnknown:
+                // Do nothing; waiting for ready state.
                 break;
+
             case AVPlayerItemStatusReadyToPlay:
                 [self onReadyToPlay];
                 break;
         }
-    } else if (context == playbackLikelyToKeepUpContext) {
-        if ([[_player currentItem] isPlaybackLikelyToKeepUp]) {
+    }
+
+    else if (context == playbackLikelyToKeepUpContext) {
+        AVPlayerItem *item = _player.currentItem;
+        if (item && item.isPlaybackLikelyToKeepUp) {
             [self updatePlayingState];
             if (_eventSink != nil) {
                 _eventSink(@{@"event" : @"bufferingEnd", @"key" : _key});
             }
         }
-    } else if (context == playbackBufferEmptyContext) {
+    }
+
+    else if (context == playbackBufferEmptyContext) {
         if (_eventSink != nil) {
             _eventSink(@{@"event" : @"bufferingStart", @"key" : _key});
         }
-    } else if (context == playbackBufferFullContext) {
+    }
+
+    else if (context == playbackBufferFullContext) {
         if (_eventSink != nil) {
             _eventSink(@{@"event" : @"bufferingEnd", @"key" : _key});
         }
@@ -337,78 +361,103 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
     if (!_isInitialized || !_key) {
         return;
     }
+
     if (!self._observersAdded){
         [self addObservers:[_player currentItem]];
     }
 
     if (_isPlaying) {
         if (@available(iOS 10.0, *)) {
-            [_player playImmediatelyAtRate:1.0];
-            _player.rate = _playerRate;
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                [_player playImmediatelyAtRate:1.0];
+
+                float desiredRate = self->_playerRate;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self->_player.rate = desiredRate;
+                });
+            });
         } else {
-            [_player play];
-            _player.rate = _playerRate;
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                [_player play];
+
+                float desiredRate = self->_playerRate;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self->_player.rate = desiredRate;
+                });
+            });
         }
     } else {
-        [_player pause];
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            [self->_player pause];
+        });
     }
 }
 
+
 - (void)onReadyToPlay {
     if (_eventSink && !_isInitialized && _key) {
-        if (!_player.currentItem) {
-            return;
-        }
-        if (_player.status != AVPlayerStatusReadyToPlay) {
-            return;
-        }
+        AVPlayerItem *item = _player.currentItem;
+        if (!item) return;
 
-        CGSize size = [_player currentItem].presentationSize;
+        if (_player.status != AVPlayerStatusReadyToPlay) return;
+
+        CGSize size = item.presentationSize;
         CGFloat width = size.width;
         CGFloat height = size.height;
 
+        AVAsset *asset = item.asset;
+        BOOL onlyAudio = [[asset tracksWithMediaType:AVMediaTypeVideo] count] == 0;
 
-        AVAsset *asset = _player.currentItem.asset;
-        bool onlyAudio =  [[asset tracksWithMediaType:AVMediaTypeVideo] count] == 0;
-
-        // The player has not yet initialized.
-        if (!onlyAudio && height == CGSizeZero.height && width == CGSizeZero.width) {
-            return;
-        }
-        const BOOL isLive = CMTIME_IS_INDEFINITE([_player currentItem].duration);
-        // The player may be initialized but still needs to determine the duration.
-        if (isLive == false && [self duration] == 0) {
-            return;
+        if (!onlyAudio && (width == 0 || height == 0)) {
+            return; // wait until video metadata is ready
         }
 
-        //Fix from https://github.com/flutter/flutter/issues/66413
-        AVPlayerItemTrack *track = [self.player currentItem].tracks.firstObject;
-        CGSize naturalSize = track.assetTrack.naturalSize;
-        CGAffineTransform prefTrans = track.assetTrack.preferredTransform;
-        CGSize realSize = CGSizeApplyAffineTransform(naturalSize, prefTrans);
+        // Check if it's a live stream
+        const BOOL isLive = CMTIME_IS_INDEFINITE(item.duration);
+        if (!isLive && [self duration] == 0) {
+            return; // wait until duration is known
+        }
 
-        int64_t duration = [BetterPlayerTimeUtils FLTCMTimeToMillis:(_player.currentItem.asset.duration)];
-        if (_overriddenDuration > 0 && duration > _overriddenDuration){
-            _player.currentItem.forwardPlaybackEndTime = CMTimeMake(_overriddenDuration/1000, 1);
+        // iOS-specific fix for rotation & natural size
+        CGSize realSize = CGSizeZero;
+        if (item.tracks.count > 0) {
+            AVPlayerItemTrack *track = item.tracks.firstObject;
+            if (track.assetTrack) {
+                CGSize naturalSize = track.assetTrack.naturalSize;
+                CGAffineTransform prefTrans = track.assetTrack.preferredTransform;
+                realSize = CGSizeApplyAffineTransform(naturalSize, prefTrans);
+            }
+        }
+
+        // Override playback end time if needed
+        int64_t duration = [BetterPlayerTimeUtils FLTCMTimeToMillis:asset.duration];
+        if (_overriddenDuration > 0 && duration > _overriddenDuration) {
+            item.forwardPlaybackEndTime = CMTimeMake(_overriddenDuration / 1000, 1);
         }
 
         _isInitialized = true;
         [self updatePlayingState];
+
+        // Send event
         _eventSink(@{
             @"event" : @"initialized",
             @"duration" : @([self duration]),
-            @"width" : @(fabs(realSize.width) ? : width),
-            @"height" : @(fabs(realSize.height) ? : height),
+            @"width" : @(fabs(realSize.width) > 0 ? fabs(realSize.width) : width),
+            @"height" : @(fabs(realSize.height) > 0 ? fabs(realSize.height) : height),
             @"key" : _key
         });
     }
 }
 
+
 - (void)play {
     _stalledCount = 0;
     _isStalledCheckStarted = false;
     _isPlaying = true;
-    [self updatePlayingState];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self updatePlayingState];
+    });
 }
 
 - (void)pause {

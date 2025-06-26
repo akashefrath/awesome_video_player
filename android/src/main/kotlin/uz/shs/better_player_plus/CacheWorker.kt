@@ -1,6 +1,5 @@
 package uz.shs.better_player_plus
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -20,12 +19,11 @@ import java.lang.Exception
  * Cache worker which download part of video and save in cache for future usage. The cache job
  * will be executed in work manager.
  */
-@SuppressLint("UnsafeOptInUsageError")
+
 class CacheWorker(
     private val context: Context,
     params: WorkerParameters
 ) : Worker(context, params) {
-
 
 
     private var cacheWriter: CacheWriter? = null
@@ -91,6 +89,7 @@ class CacheWorker(
             }
         }
     }
+
 
     override fun onStopped() {
         try {
