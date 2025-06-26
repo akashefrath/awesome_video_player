@@ -1,5 +1,6 @@
 package uz.shs.better_player_plus
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -19,11 +20,12 @@ import java.lang.Exception
  * Cache worker which download part of video and save in cache for future usage. The cache job
  * will be executed in work manager.
  */
-
+@SuppressLint("UnsafeOptInUsageError")
 class CacheWorker(
     private val context: Context,
     params: WorkerParameters
 ) : Worker(context, params) {
+
 
 
     private var cacheWriter: CacheWriter? = null
@@ -39,8 +41,8 @@ class CacheWorker(
             val maxCacheFileSize = data.getLong(BetterPlayerPlugin.MAX_CACHE_FILE_SIZE_PARAMETER, 0)
 
             val headers = extractHeaders(data)
-
             val uri = Uri.parse(url)
+
             if (isHTTP(uri)) {
                 val userAgent = getUserAgent(headers)
                 val dataSourceFactory = getDataSourceFactory(userAgent, headers)
@@ -73,6 +75,9 @@ class CacheWorker(
                 }
 
                 cacheWriter?.cache()
+
+                // ✅ Explicit success return
+                Result.success()
             } else {
                 Log.e(TAG, "Preloading is only possible for remote data sources")
                 Result.failure()
@@ -80,11 +85,11 @@ class CacheWorker(
         } catch (exception: Exception) {
             Log.e(TAG, "Error during cache work: ${exception.localizedMessage}", exception)
             if (exception is HttpDataSource.HttpDataSourceException) {
-                Result.success() // We consider the error handled as a successful result
+                Result.success() // ✅ Considered handled
             } else {
                 Result.failure()
             }
-        } as Result
+        }
     }
 
     override fun onStopped() {
