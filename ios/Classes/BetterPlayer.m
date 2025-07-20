@@ -89,6 +89,7 @@ AVPictureInPictureController *_pipController;
 
 - (void) removeObservers{
     if (self._observersAdded){
+         @try {
         [_player removeObserver:self forKeyPath:@"rate" context:nil];
         [[_player currentItem] removeObserver:self forKeyPath:@"status" context:statusContext];
         [[_player currentItem] removeObserver:self forKeyPath:@"presentationSize" context:presentationSizeContext];
@@ -105,7 +106,11 @@ AVPictureInPictureController *_pipController;
                                    forKeyPath:@"playbackBufferFull"
                                       context:playbackBufferFullContext];
         [[NSNotificationCenter defaultCenter] removeObserver:self];
-        self._observersAdded = false;
+    
+         }@catch (NSException *exception) {
+            NSLog(@"BetterPlayer: Failed to remove observer: %@", exception.reason);
+        }
+            self._observersAdded = false;
     }
 }
 
