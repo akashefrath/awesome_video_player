@@ -48,7 +48,7 @@ import PINCache
     @objc public func setup() {
         _ = CacheManager.setupOnce // Ensures setup runs only once
         let webServer = GCDWebServer()
-        let cache = PINCache.shared
+        let cache = PINCache(name: "BetterPlayerCache") 
         let urlSession = URLSession.shared
         server = HLSCachingReverseProxyServer(webServer: webServer, urlSession: urlSession, cache: cache)
         server?.start(port: 8080)

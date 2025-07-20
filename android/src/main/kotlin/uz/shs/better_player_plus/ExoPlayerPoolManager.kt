@@ -42,6 +42,7 @@ object ExoPlayerPoolManager {
             if (pool.size < POOL_SIZE) {
                 exoPlayer.stop()
                 exoPlayer.clearMediaItems()
+                exoPlayer.clearVideoSurface() 
                 pool.addLast(exoPlayer)
             } else {
                 exoPlayer.release()

@@ -116,7 +116,7 @@ AVPictureInPictureController *_pipController;
     } else {
         if (_eventSink) {
             _eventSink(@{@"event" : @"completed", @"key" : _key});
-            [ self removeObservers];
+         //   [ self removeObservers];
 
         }
     }
